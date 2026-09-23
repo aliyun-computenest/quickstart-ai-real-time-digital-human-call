@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="计算巢是阿里云开放给企业应用服务商的服务管理平台。服务商能够在计算巢上发布私有化部署服务，为其客户提供云上软件一键部署的能力；同时也支持全托管模式的服务，赋能服务商托管其客户资源。">
+  <title>AI实时数字人通话 部署文档 - Aliyun 计算巢 x AI实时数字人通话</title>
+
+  <link rel="shortcut icon" href="img/favicon.ico">
+
+  <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css">
+  <link rel="stylesheet" href="css/theme.css">
+  
+
+  
+
+  
+  
+
+  
+    <script src="search/main.js"></script>
+  
+
+  
+
+  <script src="js/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="nav">
+      <div class="nav-inner">
+        <div class="logo">
+          <img src="./img/logo-2x.png">
+        </div>
+        <div class="nav-list">
+          <ul>
+          
+              <li><a href="#ai">AI实时数字人通话 部署文档</a></li>
+              
+                  <li><a href="#_1">概述</a></li>
+                  
+              
+                  <li><a href="#_2">计费说明</a></li>
+                  
+              
+                  <li><a href="#_3">部署架构</a></li>
+                  
+              
+                  <li><a href="#ram">RAM账号所需权限</a></li>
+                  
+              
+                  <li><a href="#_4">部署流程</a></li>
+                  
+                      <li class="li-h3"><a href="#1">1. 创建服务实例</a></li>
+                  
+                      <li class="li-h3"><a href="#2">2. 确认订单并创建</a></li>
+                  
+                      <li class="li-h3"><a href="#3">3. 等待部署完成</a></li>
+                  
+                      <li class="li-h3"><a href="#4">4. 访问服务</a></li>
+                  
+              
+                  <li><a href="#_5">问题排查</a></li>
+                  
+              
+                  <li><a href="#_6">联系我们</a></li>
+                  
+              
+          
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="content theme-github">
+      
+      <div class="content-inner">        
+        
+        <h1 id="ai">AI实时数字人通话 部署文档</h1>
+<h2 id="_1">概述</h2>
+<p>AI实时数字人通话是一款在阿里云 GPU ECS 上开箱即用的实时数字人一体化方案。服务将 GPU 驱动、本地大模型（llama.cpp + Qwen3）、口型同步（LiveTalking + wav2lip256）、语音链路与 Studio 制作平台等重资产在部署物镜像构建期烘焙，部署时自动补齐 Studio（写入百炼 API-KEY）、HTTPS（绑定公网 IP）与按 GPU 算力重编的本地大模型组件，内置 nginx + HTTPS（麦克风刚需）。通过阿里云计算巢服务，您可以一键部署，部署完成后即可通过公网 HTTPS 打开数字人对话与制作界面。</p>
+<p>支持规格：<code>ecs.gn8is</code>（NVIDIA L20，单卡 48GB 显存）与 <code>ecs.gn7i</code>（NVIDIA A10，单卡 24GB 显存）等 GPU 规格，部署期会按实际 GPU 算力自动重编 llama.cpp，无需人工干预。</p>
+<h2 id="_2">计费说明</h2>
+<p>AI实时数字人通话在计算巢上的费用主要涉及：</p>
+<ul>
+<li>所选 GPU 实例规格（<code>ecs.gn8is</code> / <code>ecs.gn7i</code> 等）</li>
+<li>系统盘类型及容量（默认 100 GiB）</li>
+<li>公网带宽（按使用流量或固定带宽计费）</li>
+</ul>
+<p>计费方式包括按量付费与包年包月，预估费用在创建实例时可实时看到。</p>
+<h2 id="_3">部署架构</h2>
+<p>服务采用 <strong>单台 GPU ECS + EcsImage 部署物</strong> 架构：GPU 驱动、本地大模型、口型权重与形象包在部署物镜像构建期烘焙，部署期在同一台实例上补齐 Studio、HTTPS 与未烘焙的 GPU 组件，通过实例公网 IP 直接对外提供 HTTPS 与 WebRTC 媒体服务。</p>
+<h2 id="ram">RAM账号所需权限</h2>
+<p>AI实时数字人通话需要对 ECS、VPC 等资源进行访问和创建操作。若您使用 RAM 用户创建服务实例，需要在创建服务实例前，为该 RAM 用户添加相应资源的权限。添加 RAM 权限的详细操作，请参见<a href="https://help.aliyun.com/document_detail/121945.html">为RAM用户授权</a>。所需权限如下表所示。</p>
+<table>
+<thead>
+<tr>
+<th>权限策略名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AliyunECSFullAccess</td>
+<td>管理云服务器服务（ECS）的权限</td>
+</tr>
+<tr>
+<td>AliyunVPCFullAccess</td>
+<td>管理专有网络（VPC）的权限</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">部署流程</h2>
+<h3 id="1">1. 创建服务实例</h3>
+<p>访问 AI实时数字人通话 服务部署链接，按提示填写部署参数：</p>
+<p><a href="https://computenest.console.aliyun.com/service/instance/create/cn-hangzhou?type=user&amp;ServiceId=service-9696c9a2a76f4d9eabf9">部署链接</a></p>
+<p>关键参数说明：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>地域 / 可用区</td>
+<td>是</td>
+<td>选择有对应 GPU 规格库存的可用区（如华东1杭州的可用区 J / K）</td>
+</tr>
+<tr>
+<td>实例规格</td>
+<td>是</td>
+<td>选择 GPU 规格：<code>ecs.gn8is</code>（L20）或 <code>ecs.gn7i</code>（A10）系列</td>
+</tr>
+<tr>
+<td>系统盘</td>
+<td>是</td>
+<td>默认 100 GiB（模型 + 运行环境约 40G+），最小 100</td>
+</tr>
+<tr>
+<td>实例密码</td>
+<td>是</td>
+<td>实例登录密码</td>
+</tr>
+<tr>
+<td>百炼 API-KEY</td>
+<td>否</td>
+<td>用于 Studio 生图/生视频；不配置数字人对话等核心功能仍可用</td>
+</tr>
+<tr>
+<td>域名</td>
+<td>否</td>
+<td>已解析到本实例公网 IP 的域名，配置后签发 Let's Encrypt 免告警证书</td>
+</tr>
+<tr>
+<td>数字人形象 ID</td>
+<td>否</td>
+<td>默认数字人形象</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="创建服务实例" src="images/create-instance.png" /></p>
+<h3 id="2">2. 确认订单并创建</h3>
+<p>参数填写完成后可以看到对应询价明细，确认参数后点击 <strong>下一步：确认订单</strong>。确认订单完成后同意《计算巢服务协议》并点击 <strong>立即创建</strong> 进入部署阶段。</p>
+<h3 id="3">3. 等待部署完成</h3>
+<p>创建后点击 <strong>去列表查看</strong> 进入服务实例列表，可看到新建实例处于「部署中」。服务会自动完成 GPU 驱动加载、本地大模型按当前 GPU 算力重编、语音/口型/Studio 组件拉起与 HTTPS 配置。</p>
+<ul>
+<li>若部署物镜像构建期已烘焙 GPU 组件，部署期通常仅需数分钟（补齐 Studio + HTTPS）；若需在线补齐并重编本地大模型等组件，约 15–25 分钟。</li>
+<li>部署进度与日志：实例内 <code>/var/log/ai-avatar-install.log</code>；完成后写入 <code>/root/ai-avatar.done</code>。</li>
+<li>当实例状态变为「已部署」后，在服务实例详情页的「立即使用」处可获取访问链接，形如 <code>https://&lt;实例公网IP&gt;/</code>。</li>
+</ul>
+<h3 id="4">4. 访问服务</h3>
+<p>在服务实例详情页点击访问链接（<code>https://&lt;实例公网IP&gt;/</code>）打开服务。默认使用自签 HTTPS 证书（麦克风刚需 HTTPS），浏览器首次会提示「您的连接不是私密连接」，点击 <strong>高级 → 继续前往</strong> 即可打开 LiveTalk Studio 数字人制作平台。进入后可在「我的数字人」中选择已就绪的形象开始实时对话，或创建新的数字人。</p>
+<p><img alt="服务页面" src="images/service-page.png" /></p>
+<h2 id="_5">问题排查</h2>
+<ul>
+<li><strong>画面黑屏 / 无视频流</strong>：确认安全组已放行 <strong>UDP 50000-50100</strong>（WebRTC 媒体端口），否则口型画面无法建立。</li>
+<li><strong>无法打开页面</strong>：数字人对麦克风的调用强依赖 HTTPS，请通过 <code>https://&lt;公网IP&gt;/</code> 访问；自签证书场景需在浏览器点击 <strong>高级 → 继续前往</strong>。</li>
+<li><strong>部署进度停滞或失败</strong>：登录实例查看 <code>/var/log/ai-avatar-install.log</code>；部署脚本对偶发网络失败会自动重试（最多 3 次），完成后写入 <code>/root/ai-avatar.done</code>。</li>
+<li><strong>Studio 生图/生视频不可用</strong>：确认已在部署参数中填写有效的百炼 API-KEY。</li>
+</ul>
+<h2 id="_6">联系我们</h2>
+<p>更多技术实现与参数说明请参见仓库内服务技术说明 <a href="https://github.com/aliyun-computenest/quickstart-ai-real-time-digital-human-call/blob/main/.computenest/README.md">.computenest/README.md</a>。</p>
+        
+      </div>
+
+      <div class="copyrights">© 2009-2022 Aliyun.com 版权所有</div>
+    </div>
+  </div>
+  
+  <!--
+  MkDocs version      : 1.6.1
+  Docs Build Date UTC : 2026-09-23 01:56:09.210581+00:00
+  -->
+</body>
+</html>

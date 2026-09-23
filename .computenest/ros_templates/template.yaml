@@ -1,0 +1,547 @@
+ROSTemplateFormatVersion: '2015-09-01'
+Conditions:
+  CreateVpcConditions:
+    Fn::Equals:
+      - NewVPC
+      - Ref: VpcOption
+Parameters:
+  PayType:
+    Type: String
+    Label:
+      en: ECS Instance Charge Type
+      zh-cn: 付费类型
+    Default: PostPaid
+    AllowedValues:
+      - PrePaid
+      - PostPaid
+    AssociationProperty: ChargeType
+    AssociationPropertyMetadata:
+      LocaleKey: InstanceChargeType
+  PayPeriodUnit:
+    Type: String
+    Label:
+      en: Pay Period Unit
+      zh-cn: 购买资源时长周期
+    Default: Month
+    AllowedValues:
+      - Month
+    AssociationProperty: PayPeriodUnit
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        Month: 月
+      Visible:
+        Condition:
+          Fn::Not:
+            Fn::Equals:
+              - ${PayType}
+              - PostPaid
+  PayPeriod:
+    Type: Number
+    Label:
+      en: Period
+      zh-cn: 购买资源时长
+    Default: 1
+    AllowedValues:
+      - 1
+      - 3
+      - 6
+      - 12
+    AssociationProperty: PayPeriod
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Not:
+            Fn::Equals:
+              - ${PayType}
+              - PostPaid
+  EcsInstanceType:
+    Type: String
+    Label:
+      en: Instance Type
+      zh-cn: 实例类型
+    AssociationProperty: ALIYUN::ECS::Instance::InstanceType
+    AssociationPropertyMetadata:
+      ZoneId: ${ZoneId}
+      InstanceChargeType: ${PayType}
+      Constraints:
+        # ecs.gn8is = NVIDIA L20（单卡 48GB 显存）；ecs.gn7i = NVIDIA A10（单卡 24GB 显存）
+        # 镜像内 llama.cpp 首启会按实际 GPU 算力自动重编，故两族均可用（A10 现货更充足）
+        InstanceTypeFamily:
+          - ecs.gn8is
+          - ecs.gn7i
+  InstancePassword:
+    NoEcho: true
+    Type: String
+    Description:
+      en: Server login password, Length 8-30, must contain three(Capital letters, lowercase letters, numbers, ()`~!@#$%^&*_-+=|{}[]:;'<>,.?/ Special symbol in)
+      zh-cn: 服务器登录密码,长度8-30，必须包含三项（大写字母、小写字母、数字、 ()`~!@#$%^&*_-+=|{}[]:;'<>,.?/ 中的特殊符号）
+    AllowedPattern: '^[a-zA-Z0-9-\(\)\`\~\!\@\#\$\%\^\&\*\_\-\+\=\|\{\}\[\]\:\;\<\>\,\.\?\/]*$'
+    Label:
+      en: Instance Password
+      zh-cn: 实例密码
+    ConstraintDescription:
+      en: Length 8-30, must contain three(Capital letters, lowercase letters, numbers, ()`~!@#$%^&*_-+=|{}[]:;'<>,.?/ Special symbol in)
+      zh-cn: 长度8-30，必须包含三项（大写字母、小写字母、数字、 ()`~!@#$%^&*_-+=|{}[]:;'<>,.?/ 中的特殊符号）
+    MinLength: 8
+    MaxLength: 30
+    AssociationProperty: ALIYUN::ECS::Instance::Password
+    AssociationPropertyMetadata:
+      Random: true
+  SystemDiskSize:
+    Type: Number
+    Label:
+      en: System Disk Size (GiB)
+      zh-cn: 系统盘大小（GiB）
+    Description:
+      en: Models + PyTorch environment take ~40G+, at least 100G is recommended.
+      zh-cn: 模型 + PyTorch 环境约占 40G+，建议至少 100G。
+    Default: 100
+    MinValue: 100
+    MaxValue: 500
+  ZoneId:
+    Type: String
+    Label:
+      en: Zone ID
+      zh-cn: 可用区ID
+    AssociationProperty: ALIYUN::ECS::Instance::ZoneId
+    AssociationPropertyMetadata:
+      DefaultValueStrategy: random
+      InstanceChargeType: ${PayType}
+      SystemDiskCategory: cloud_essd
+      InstanceType: ${EcsInstanceType}
+  BaiLianApiKey:
+    NoEcho: true
+    Type: String
+    Description:
+      zh-cn: 开通百炼模型服务并获得 API-KEY，用于 Studio 的 AI 生图/生视频（不配则数字人核心功能仍可用，仅生图/生视频不可用）。请参考：<a href="https://help.aliyun.com/zh/model-studio/get-api-key" target="_blank">获取百炼 API-KEY</a>。
+      en: 'Activate BaiLian (Model Studio) and obtain the API-KEY, used by Studio for AI image/video generation (core avatar features still work without it). Refer to: <a href="https://help.aliyun.com/zh/model-studio/get-api-key" target="_blank">Get BaiLian API-KEY</a>.'
+    Label:
+      zh-cn: 百炼 API-KEY
+      en: BaiLian API-KEY
+    Default: ''
+    AssociationProperty: ALIYUN::DashScope::ApiKey
+  Domain:
+    Type: String
+    Label:
+      zh-cn: 自定义域名（可选）
+      en: Custom Domain (optional)
+    Description:
+      zh-cn: 填写已解析到本实例公网 IP 的域名后，将自动申请 Let's Encrypt 免费证书（浏览器无告警）；留空则使用自签名证书（麦克风可用，但浏览器会提示不安全）。
+      en: If you provide a domain already resolved to this instance's public IP, a free Let's Encrypt certificate is issued (no browser warning); leave empty to use a self-signed certificate (microphone works, but the browser shows an insecure warning).
+    Default: ''
+  AvatarId:
+    Type: String
+    Label:
+      zh-cn: 默认数字人形象 ID
+      en: Default Avatar ID
+    Description:
+      zh-cn: 指定默认加载的数字人形象，保持默认即可。
+      en: The default avatar to load. Keep the default value if unsure.
+    Default: zhiwei_202608311158
+  VpcOption:
+    Type: String
+    AllowedValues:
+      - NewVPC
+      - ExistingVPC
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        NewVPC:
+          zh-cn: 新建专有网络
+          en: New VPC
+        ExistingVPC:
+          zh-cn: 已有专有网络
+          en: Existing VPC
+    Label:
+      en: Select Existing or New VPC
+      zh-cn: 选择已有/新建的专有网络
+    Required: true
+    Default: NewVPC
+  VpcId:
+    Type: String
+    Label:
+      en: VPC ID
+      zh-cn: 专有网络VPC实例ID
+    AssociationProperty: 'ALIYUN::ECS::VPC::VPCId'
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    Default: ''
+    AssociationPropertyMetadata:
+      AutoSelectFirst: true
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  VSwitchId:
+    Type: String
+    Label:
+      en: VSwitch ID
+      zh-cn: 交换机实例ID
+    Default: ''
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationPropertyMetadata:
+      AutoSelectFirst: true
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId}
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  VpcCidrBlock:
+    Type: String
+    Label:
+      en: VPC CIDR IPv4 Block
+      zh-cn: 专有网络IPv4网段
+    Default: 192.168.0.0/16
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VPC::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  VSwitchCidrBlock:
+    Type: String
+    Label:
+      en: VSwitch CIDR Block
+      zh-cn: 交换机子网网段
+    Default: 192.168.1.0/24
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+Resources:
+  EcsVpc:
+    Type: ALIYUN::ECS::VPC
+    Condition: CreateVpcConditions
+    Properties:
+      VpcName:
+        Ref: ALIYUN::StackName
+      CidrBlock:
+        Ref: VpcCidrBlock
+  EcsVSwitch:
+    Condition: CreateVpcConditions
+    Type: ALIYUN::ECS::VSwitch
+    Properties:
+      VSwitchName:
+        Ref: ALIYUN::StackName
+      VpcId:
+        Ref: EcsVpc
+      ZoneId:
+        Ref: ZoneId
+      CidrBlock:
+        Ref: VSwitchCidrBlock
+  SecurityGroup:
+    Type: ALIYUN::ECS::SecurityGroup
+    Properties:
+      SecurityGroupName:
+        Ref: ALIYUN::StackName
+      VpcId:
+        Fn::If:
+          - CreateVpcConditions
+          - Ref: EcsVpc
+          - Ref: VpcId
+      SecurityGroupIngress:
+        - PortRange: 22/22
+          Priority: 1
+          SourceCidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          NicType: internet
+        - PortRange: 80/80
+          Priority: 1
+          SourceCidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          NicType: internet
+        - PortRange: 443/443
+          Priority: 1
+          SourceCidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          NicType: internet
+        # WebRTC 媒体端口（缺则数字人画面黑屏）
+        - PortRange: 50000/50100
+          Priority: 1
+          SourceCidrIp: 0.0.0.0/0
+          IpProtocol: udp
+          NicType: internet
+  InstanceGroup:
+    Type: ALIYUN::ECS::InstanceGroup
+    Properties:
+      InstanceChargeType:
+        Ref: PayType
+      PeriodUnit:
+        Ref: PayPeriodUnit
+      Period:
+        Ref: PayPeriod
+      VpcId:
+        Fn::If:
+          - CreateVpcConditions
+          - Ref: EcsVpc
+          - Ref: VpcId
+      VSwitchId:
+        Fn::If:
+          - CreateVpcConditions
+          - Ref: EcsVSwitch
+          - Ref: VSwitchId
+      ZoneId:
+        Ref: ZoneId
+      SecurityGroupId:
+        Ref: SecurityGroup
+      # 部署物镜像（Alibaba Cloud Linux 4 + NVIDIA 驱动 + 大模型/权重/形象包，构建期已烘焙）
+      # ComputeNest 会在部署时把占位符 ecs_image 替换为已构建的镜像 ID
+      ImageId: ecs_image
+      Password:
+        Ref: InstancePassword
+      SystemDiskCategory: cloud_essd
+      SystemDiskSize:
+        Ref: SystemDiskSize
+      MaxAmount: 1
+      InstanceType:
+        Ref: EcsInstanceType
+      AllocatePublicIP: true
+      InternetMaxBandwidthOut: 100
+      InternetChargeType: PayByTraffic
+      IoOptimized: optimized
+  InstallWaitConditionHandle:
+    Type: ALIYUN::ROS::WaitConditionHandle
+  InstallWaitCondition:
+    Type: ALIYUN::ROS::WaitCondition
+    DependsOn: RunInstallCommand
+    Properties:
+      Handle:
+        Ref: InstallWaitConditionHandle
+      # 驱动已烘焙进镜像（首启即加载）；部署期补齐 Studio/HTTPS 与未烘焙的 GPU 组件，最长约 90 分钟
+      Timeout: 5400
+      Count: 1
+  RunInstallCommand:
+    Type: ALIYUN::ECS::RunCommand
+    Properties:
+      InstanceIds:
+        Fn::GetAtt:
+          - InstanceGroup
+          - InstanceIds
+      Type: RunShellScript
+      Sync: true
+      Timeout: 600
+      # 说明：脚本内只用 $VAR / $(...) 形式的 shell 变量，刻意避免 ${...} 花括号，
+      # 以免与 Fn::Sub 的 ${参数} 语法冲突；Fn::Sub 只替换下面 4 个真实模板参数。
+      CommandContent:
+        Fn::Sub:
+          - |
+            #!/bin/bash
+            set -eo pipefail
+
+            # 1) 写入安装参数（Fn::Sub 在模板渲染期填充为字面量）
+            cat > /etc/ai-avatar-install.env <<ENVEOF
+            DASHSCOPE_API_KEY=${BaiLianApiKey}
+            DOMAIN=${Domain}
+            AVATAR_ID=${AvatarId}
+            ENVEOF
+            chmod 600 /etc/ai-avatar-install.env
+
+            # 2) WaitCondition 回调脚本（CurlCli 已由 Fn::Sub 展开为完整 curl 命令，$1=status $2=msg）
+            cat > /usr/local/bin/ai-avatar-signal.sh <<'GEOF'
+            #!/bin/bash
+            ${CurlCli} -d "{\"Data\": \"$2\", \"status\": \"$1\"}" || true
+            GEOF
+            chmod +x /usr/local/bin/ai-avatar-signal.sh
+
+            # 3) 部署收尾封装脚本（单引号 heredoc：内容原样落盘，不做任何展开）
+            cat > /usr/local/bin/ai-avatar-install.sh <<'WEOF'
+            #!/bin/bash
+            set -o pipefail
+            exec >>/var/log/ai-avatar-install.log 2>&1
+            echo "[ai-avatar] finalize start at $(date)"
+            export HOME=/root
+            export ROOT=/root/ai-avatar
+            set -a
+            . /etc/ai-avatar-install.env
+            set +a
+
+            if [ -f /root/ai-avatar.done ]; then
+              echo "[ai-avatar] already completed, skip."
+              exit 0
+            fi
+
+            DEPLOY_DIR=/root/ai-avatar-deploy
+            if [ ! -f "$DEPLOY_DIR/deploy.sh" ]; then
+              /usr/local/bin/ai-avatar-signal.sh FAILURE "deploy dir missing (image not baked?)"
+              exit 1
+            fi
+            cd "$DEPLOY_DIR"
+
+            # 驱动已烘焙进镜像，正常首启即加载。极少数未自动加载时兜底：modprobe -> 最多重启一次。
+            if ! nvidia-smi >/dev/null 2>&1; then
+              modprobe nvidia 2>/dev/null || true
+              systemctl start nvidia-persistenced 2>/dev/null || true
+            fi
+            if ! nvidia-smi >/dev/null 2>&1; then
+              if [ ! -f /root/.ai-avatar-rebooted ]; then
+                touch /root/.ai-avatar-rebooted
+                echo "[ai-avatar] driver not loaded, rebooting once to load kernel module..."
+                reboot
+                exit 0
+              fi
+              /usr/local/bin/ai-avatar-signal.sh FAILURE "GPU driver failed to load after reboot"
+              exit 1
+            fi
+
+            # 让本地大模型匹配当前 GPU 架构：镜像内 llama.cpp 二进制按 L20(sm89) 烘焙，
+            # 换其他 GPU（如 A10 sm86）需按实际算力重编，否则加载报 "no kernel image available"。
+            GPU_CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d '. ')
+            if [ -n "$GPU_CC" ] && [ -f "$DEPLOY_DIR/scripts/01-llm.sh" ]; then
+              BAKED_ARCH=$(grep -oE 'CMAKE_CUDA_ARCHITECTURES=[0-9;]+' "$DEPLOY_DIR/scripts/01-llm.sh" | head -1 | cut -d= -f2)
+              case ";$BAKED_ARCH;" in
+                *";$GPU_CC;"*) echo "[ai-avatar] GPU cc=$GPU_CC 已在烘焙架构 $BAKED_ARCH 内，跳过重编" ;;
+                *)
+                  echo "[ai-avatar] GPU cc=$GPU_CC 不在烘焙架构 $BAKED_ARCH 内，使用镜像内源码离线重编 llama.cpp（约 5-10 分钟）"
+                  sed -i "s/-DCMAKE_CUDA_ARCHITECTURES=[0-9;]*/-DCMAKE_CUDA_ARCHITECTURES=$GPU_CC/" "$DEPLOY_DIR/scripts/01-llm.sh"
+                  if [ -f "$ROOT/llama.cpp/CMakeLists.txt" ]; then
+                    export PATH="/usr/local/cuda/bin:$PATH"
+                    rm -rf "$ROOT/llama.cpp/build"
+                    if cmake -S "$ROOT/llama.cpp" -B "$ROOT/llama.cpp/build" \
+                      -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="$GPU_CC" -DCMAKE_BUILD_TYPE=Release \
+                      && cmake --build "$ROOT/llama.cpp/build" --config Release -j"$(nproc)" \
+                        --target llama-server llama-cli; then
+                      echo "[ai-avatar] 镜像内 llama.cpp 源码离线重编完成"
+                    else
+                      rc=$?
+                      echo "[ai-avatar] 镜像内 llama.cpp 源码离线重编失败 rc=$rc"
+                      /usr/local/bin/ai-avatar-signal.sh FAILURE "offline llama.cpp rebuild failed rc=$rc"
+                      exit "$rc"
+                    fi
+                  else
+                    echo "[ai-avatar] 镜像内 llama.cpp 源码缺失，交由 deploy.sh 使用网络源兜底"
+                    rm -rf "$ROOT/llama.cpp/build"
+                  fi
+                  ;;
+              esac
+            fi
+
+            # 全量部署（幂等）：已烘焙步骤自动跳过；此处补齐 Studio（写入百炼 API-KEY）与 HTTPS（绑定公网 IP）。
+            # DASHSCOPE_API_KEY / AVATAR_ID / DOMAIN 已由上方 set -a 从 env 文件导出。
+            max_attempts=3
+            attempt=1
+            while [ "$attempt" -le "$max_attempts" ]; do
+              echo "[ai-avatar] deploy attempt $attempt/$max_attempts"
+              if ./deploy.sh all; then
+                touch /root/ai-avatar.done
+                echo "[ai-avatar] deploy completed."
+                /usr/local/bin/ai-avatar-signal.sh SUCCESS "ai-avatar deploy completed"
+                exit 0
+              else
+                rc=$?
+              fi
+
+              echo "[ai-avatar] deploy attempt $attempt/$max_attempts failed rc=$rc"
+              if [ "$attempt" -lt "$max_attempts" ]; then
+                delay=$((attempt * 15))
+                echo "[ai-avatar] retry in $delay seconds; WaitCondition remains pending"
+                sleep "$delay"
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            echo "[ai-avatar] deploy failed after $max_attempts attempts, final rc=$rc"
+            /usr/local/bin/ai-avatar-signal.sh FAILURE "ai-avatar deploy failed after $max_attempts attempts rc=$rc"
+            exit "$rc"
+            WEOF
+            chmod +x /usr/local/bin/ai-avatar-install.sh
+
+            # 4) 注册开机自启的 oneshot 服务（重启后自动续跑，完成即失活）
+            cat > /etc/systemd/system/ai-avatar-install.service <<'SEOF'
+            [Unit]
+            Description=AI Avatar one-click installer (idempotent, survives reboot)
+            After=network-online.target
+            Wants=network-online.target
+            ConditionPathExists=!/root/ai-avatar.done
+
+            [Service]
+            Type=oneshot
+            EnvironmentFile=/etc/ai-avatar-install.env
+            ExecStart=/usr/local/bin/ai-avatar-install.sh
+            TimeoutStartSec=0
+            RemainAfterExit=yes
+
+            [Install]
+            WantedBy=multi-user.target
+            SEOF
+
+            systemctl daemon-reload
+            systemctl enable ai-avatar-install.service
+            systemctl start --no-block ai-avatar-install.service
+            echo "AI Avatar installer scheduled; deployment continues in background."
+          - CurlCli:
+              Fn::GetAtt:
+                - InstallWaitConditionHandle
+                - CurlCli
+            BaiLianApiKey:
+              Ref: BaiLianApiKey
+            Domain:
+              Ref: Domain
+            AvatarId:
+              Ref: AvatarId
+Outputs:
+  AI_Avatar_Address:
+    Description:
+      en: AI Avatar access URL (self-signed certificate needs "proceed" in the browser).
+      zh-cn: AI 数字人访问地址（自签名证书需在浏览器点“继续访问”）。
+    Value:
+      Fn::Sub:
+        - https://${ServerAddress}/
+        - ServerAddress:
+            Fn::Select:
+              - 0
+              - Fn::GetAtt:
+                  - InstanceGroup
+                  - PublicIps
+Metadata:
+  ALIYUN::ROS::Interface:
+    ParameterGroups:
+      - Parameters:
+          - PayType
+          - PayPeriodUnit
+          - PayPeriod
+        Label:
+          default: 付费类型配置
+      - Parameters:
+          - EcsInstanceType
+          - SystemDiskSize
+          - InstancePassword
+        Label:
+          default: 服务器基础配置
+      - Parameters:
+          - BaiLianApiKey
+          - Domain
+          - AvatarId
+        Label:
+          default: 数字人配置
+      - Parameters:
+          - ZoneId
+          - VpcOption
+          - VpcId
+          - VSwitchId
+          - VpcCidrBlock
+          - VSwitchCidrBlock
+        Label:
+          default: 配置专有网络
+    AutomaticZone:
+      ZoneIdKey: ZoneId

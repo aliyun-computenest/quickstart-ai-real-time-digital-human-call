@@ -1,0 +1,143 @@
+Service:
+  RegionId: cn-hangzhou
+  DeployType: ros
+  DeployMetadata:
+    ServiceInstanceNameRule:
+      Prefix: ai-avatar-
+      UseDefaultValue: true
+    # 数字人需要公网直连 HTTPS（麦克风刚需）+ WebRTC UDP，直接暴露实例公网 IP，不使用 WebProxy
+    NetworkMetadata:
+      EnablePrivateVpcConnection: false
+      EnableReversePrivateVpcConnection: false
+    SupplierDeployMetadata:
+      # GPU 驱动 + 大模型/口型权重/形象包已在“部署物镜像”构建期烘焙；
+      # 部署期仅补齐 Studio（写入百炼 Key）、HTTPS（绑定公网 IP）与未烘焙的 GPU 组件
+      DeployTimeout: 10800
+      ArtifactRelation:
+        ecs_image:
+          ArtifactId: ${Artifact.EcsImage.ArtifactId}
+          ArtifactVersion: draft
+    TemplateConfigs:
+    - Name: ECS单机版（L20 GPU）
+      Url: 'ros_templates/template.yaml'
+      AllowedRegions:
+      - cn-hangzhou
+      - cn-beijing
+      - cn-shanghai
+      - cn-shenzhen
+      PredefinedParameters: []
+  OperationMetadata:
+    SupportBackup: false
+    PrometheusConfigMap:
+      ECS单机版（L20 GPU）:
+        EnablePrometheus: false
+  ServiceType: private
+  ShareType: Public
+  ApprovalType: Manual
+  ServiceInfo:
+  - Locale: zh-CN
+    Name: AI实时数字人通话
+    ShortDescription: 在阿里云 L20 GPU ECS 上一键部署阿里云 AI 数字人方案：自动安装 GPU 
+      驱动、拉起本地大模型（llama.cpp + Qwen3）、LiveTalking 口型同步、语音链路与 Studio 制作平台，内置 nginx 
+      + HTTPS（麦克风刚需）并按需接入百炼实现 AI 生图/生视频。部署完成即可通过公网 HTTPS 打开数字人对话与制作界面。
+    Image: 
+      https://service-info-public.oss-cn-hangzhou.aliyuncs.com/1853370294850618/cn-hangzhou/service_logoe79629a6546148598cc0.png
+    Softwares: []
+  - Locale: en-US
+    Name: AI Real-Time Digital Human Call
+    ShortDescription: Deploy a real-time AI digital human on Alibaba Cloud L20 GPU ECS with local LLM, lip sync, voice interaction, Studio, and HTTPS access.
+    Image: 
+      https://service-info-public.oss-cn-hangzhou.aliyuncs.com/1853370294850618/cn-hangzhou/service_logoe79629a6546148598cc0.png
+    Softwares: []
+Artifact:
+  EcsImage:
+    ArtifactType: EcsImage
+    ArtifactName: ai-avatar-l20-acl4
+    Description: AI 数字人一体机部署物镜像（Alibaba Cloud Linux 4 + NVIDIA 驱动 + 
+      大模型/口型权重/形象包，构建期烘焙）
+    SupportRegionIds:
+    - cn-hangzhou
+    - cn-beijing
+    - cn-shanghai
+    - cn-shenzhen
+    ArtifactProperty:
+      RegionId: cn-hangzhou
+    ArtifactBuildProperty:
+      RegionId: cn-hangzhou
+      # Alibaba Cloud Linux 4 LTS 64 位（X86），构建期在带 GPU 的临时实例上安装驱动并烘焙组件
+      SourceImageId: aliyun_4_x64_20G_alibase_20260801.vhd
+      EnableGpu: true
+      SystemDiskSize: 100
+      CommandType: RunShellScript
+      Timeout: 10800
+      CommandContent: |
+        #!/bin/bash
+        set -eo pipefail
+        export HOME=/root
+
+        echo "=== [1/4] 安装基础工具 ==="
+        dnf -y install curl unzip tar which >/dev/null 2>&1 || yum -y install curl unzip tar which || true
+
+        echo "=== [2/4] 下载并解压部署包与资产包（不安装、无需 GPU）==="
+        # bootstrap --download-only：部署包解压到 /root/ai-avatar-deploy，资产解压到 /root/ai-avatar/assets
+        curl -fsSL https://help-static-aliyun-doc.aliyuncs.com/install-script/ai-avatar-deploy/bootstrap.sh | bash -s -- --download-only
+        DEPLOY_DIR=/root/ai-avatar-deploy
+        test -f "$DEPLOY_DIR/deploy.sh"
+        # 删除下载的压缩包以缩小镜像（解压后的内容已就位）
+        rm -f /root/ai-avatar-deploy.zip /root/ai-avatar-assets.zip 2>/dev/null || true
+
+        echo "=== [3/5] 抑制构建实例自动重启（官方 auto_install 装完会自动重启，会中断本次 RunCommand）==="
+        # 仅在这台一次性构建实例上临时把 reboot/shutdown/halt/poweroff 改名为 no-op；
+        # 装完【必须】还原，避免把 no-op 烘进镜像。
+        for b in reboot shutdown halt poweroff; do
+          if [ -x "/usr/sbin/$b" ] && [ ! -e "/usr/sbin/$b.real" ]; then
+            mv "/usr/sbin/$b" "/usr/sbin/$b.real"
+            printf '#!/bin/bash\necho "[build] suppressed: %s"\nexit 0\n' "$b" > "/usr/sbin/$b"
+            chmod +x "/usr/sbin/$b"
+          fi
+        done
+        # systemctl reboot/poweroff/halt/kexec 走 systemd，用透传壳只拦这几个动作，其余原样转发（用 printf 避免 heredoc 缩进问题）
+        if [ -x /usr/bin/systemctl ] && [ ! -e /usr/bin/systemctl.real ]; then
+          mv /usr/bin/systemctl /usr/bin/systemctl.real
+          printf '#!/bin/bash\nfor a in "$@"; do case "$a" in reboot|poweroff|halt|kexec) echo "[build] suppressed systemctl $*"; exit 0;; esac; done\nexec /usr/bin/systemctl.real "$@"\n' > /usr/bin/systemctl
+          chmod +x /usr/bin/systemctl
+        fi
+
+        echo "=== [4/5] 安装 NVIDIA 驱动并验证【免重启】能否直接加载 ==="
+        cd "$DEPLOY_DIR"
+        ( ./deploy.sh driver ) || true
+
+        # 还原重启相关二进制（务必在 createImage 之前，避免把 no-op 烘进镜像）
+        for b in reboot shutdown halt poweroff; do
+          if [ -e "/usr/sbin/$b.real" ]; then mv -f "/usr/sbin/$b.real" "/usr/sbin/$b"; fi
+        done
+        if [ -e /usr/bin/systemctl.real ]; then mv -f /usr/bin/systemctl.real /usr/bin/systemctl; fi
+        echo ">> 已还原 reboot/shutdown/halt/poweroff/systemctl"
+
+        # 免重启加载尝试：卸载 nouveau 后手动 modprobe nvidia
+        echo ">> [免重启验证] 卸载 nouveau 并尝试加载 nvidia 内核模块"
+        rmmod nvidia_drm nvidia_modeset nvidia_uvm nvidia 2>/dev/null || true
+        modprobe -r nouveau 2>/dev/null || true
+        depmod -a 2>/dev/null || true
+        modprobe nvidia 2>/dev/null || true
+        modprobe nvidia_uvm 2>/dev/null || true
+
+        NOREBOOT_OK=0
+        if nvidia-smi >/dev/null 2>&1; then
+          NOREBOOT_OK=1
+          echo "#################### 免重启加载【成功】：driver 在构建期即可用 ####################"
+          nvidia-smi --query-gpu=name,driver_version --format=csv,noheader || true
+        else
+          echo "#################### 免重启加载【失败】：nvidia-smi 不可用（驱动文件已装，用户实例首启加载）####################"
+          echo ">> nouveau=$(lsmod | grep -c nouveau) nvidia=$(lsmod | grep -c '^nvidia')"
+        fi
+
+        echo "=== [5/5] 若免重启已就绪则烘焙 GPU 重组件（Studio/HTTPS 留到部署期）==="
+        if [ "$NOREBOOT_OK" = "1" ]; then
+          ( SKIP_STUDIO=1 SKIP_HTTPS=1 ./deploy.sh all ) || echo "WARN: 全量烘焙未完成，剩余步骤将在部署期补齐"
+        else
+          echo ">> 跳过 GPU 组件烘焙，改由部署期安装"
+        fi
+
+        touch /root/.ai-avatar-baked
+        echo "=== 镜像构建完成 (NOREBOOT_OK=$NOREBOOT_OK) ==="

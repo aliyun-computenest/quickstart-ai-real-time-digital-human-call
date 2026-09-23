@@ -1,0 +1,12 @@
+templateName: ECS单机版（L20 GPU）
+regionId: cn-hangzhou
+parameters:
+  VpcOption: "NewVPC"
+  VpcCidrBlock: "192.168.0.0/16"
+  VSwitchCidrBlock: "192.168.1.0/24"
+  PayType: "PostPaid"
+  EcsInstanceType: "ecs.gn8is-2x.8xlarge"
+  SystemDiskSize: 100
+  InstancePassword: "$[iact3-auto]"
+  BaiLianApiKey: ""
+  Domain: ""
